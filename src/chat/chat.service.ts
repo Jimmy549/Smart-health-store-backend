@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import OpenAI from 'openai';
 import { ProductsService } from '../products/products.service';
+import { ChatMessage } from '../schemas/chat-message.schema';
 
 @Injectable()
 export class ChatService {
@@ -10,6 +13,7 @@ export class ChatService {
   constructor(
     private configService: ConfigService,
     private productsService: ProductsService,
+    @InjectModel(ChatMessage.name) private chatMessageModel: Model<ChatMessage>,
   ) {
     this.openai = new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
@@ -21,7 +25,7 @@ export class ChatService {
     });
   }
 
-  async chat(userMessage: string) {
+  async chat(userMessage: string, inputType: 'text' | 'voice' = 'text', userId: string = 'anonymous') {
     try {
       // Get all products from database for context
       const products = await this.productsService.getAllProducts();
@@ -69,6 +73,14 @@ Guidelines:
 
       const aiResponse = response.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
 
+      // Save chat message to database
+      await this.chatMessageModel.create({
+        userId,
+        message: userMessage,
+        response: aiResponse,
+        inputType,
+      });
+
       return {
         success: true,
         message: aiResponse,
@@ -82,5 +94,27 @@ Guidelines:
         error: error.message,
       };
     }
+  }
+
+  async getAnalytics() {
+    const totalMessages = await this.chatMessageModel.countDocuments();
+    const voiceCount = await this.chatMessageModel.countDocuments({ inputType: 'voice' });
+    const textCount = await this.chatMessageModel.countDocuments({ inputType: 'text' });
+    const voicePercentage = totalMessages > 0 ? Math.round((voiceCount / totalMessages) * 100) : 0;
+
+    const recentVoiceQueries = await this.chatMessageModel
+      .find({ inputType: 'voice' })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select('message createdAt')
+      .exec();
+
+    return {
+      totalMessages,
+      voiceCount,
+      textCount,
+      voicePercentage,
+      recentVoiceQueries,
+    };
   }
 }
