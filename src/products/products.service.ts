@@ -17,7 +17,7 @@ export class ProductsService {
       baseURL: 'https://openrouter.ai/api/v1',
       apiKey: this.configService.get<string>('OPENROUTER_API_KEY'),
       defaultHeaders: {
-        'HTTP-Referer': 'http://localhost:5000',
+        'HTTP-Referer': 'http://localhost:3001',
         'X-Title': 'Smart Health Store',
       },
     });
@@ -61,33 +61,42 @@ export class ProductsService {
 
   private async extractKeywordsWithAI(userQuery: string): Promise<string[]> {
     try {
-      const prompt = `You are a healthcare product assistant. Extract relevant health-related keywords/tags from the following user query that could match product tags in a health store database.
+      // First, check for direct product name matches or common misspellings
+      const directMatches = this.getDirectMatches(userQuery);
+      if (directMatches.length > 0) {
+        console.log('Direct matches found:', directMatches);
+        return directMatches;
+      }
 
-User Query: "${userQuery}"
+      const prompt = `Extract health supplement keywords from: "${userQuery}"
 
-Return only a comma-separated list of relevant keywords (3-5 keywords maximum). Focus on health conditions, symptoms, body parts, or health goals.
+Common supplements and their keywords:
+- Zinc/Zink → zinc, immune, minerals
+- Vitamin C → vitamin c, immune, antioxidant
+- Iron → iron, anemia, energy, blood
+- Calcium → calcium, bone health, bones
+- Magnesium → magnesium, muscle, sleep
+- Omega-3 → omega-3, heart health, brain
+- Probiotics → probiotics, digestive health, gut
+- Collagen → collagen, skin health, anti-aging
 
-Example:
-- Input: "I have weak bones" → Output: bone health, calcium, vitamin D, osteoporosis
-- Input: "I need energy" → Output: energy, fatigue, vitamins, supplements
-- Input: "My joints hurt" → Output: joint pain, arthritis, inflammation, mobility
-
-Output (keywords only):`;
+Return only relevant keywords (max 3) that match actual supplement names or health benefits.
+Keywords:`;
 
       const response = await this.openai.chat.completions.create({
         model: this.configService.get<string>('GEMINI_MODEL'),
         messages: [
           {
             role: 'system',
-            content: 'You are a healthcare keyword extraction assistant. Return only comma-separated keywords, no explanations.',
+            content: 'Extract supplement keywords only. Return comma-separated list.',
           },
           {
             role: 'user',
             content: prompt,
           },
         ],
-        temperature: 0.3,
-        max_tokens: 500,
+        temperature: 0.1,
+        max_tokens: 50,
       });
 
       const keywordsText = response.choices[0]?.message?.content || '';
@@ -102,6 +111,37 @@ Output (keywords only):`;
       console.error('Error extracting keywords with AI:', error);
       return [];
     }
+  }
+
+  private getDirectMatches(query: string): string[] {
+    const queryLower = query.toLowerCase().trim();
+    
+    // Handle common misspellings and direct matches
+    const directMappings = {
+      'zink': ['zinc'],
+      'zinc': ['zinc'],
+      'vitamin c': ['vitamin c'],
+      'iron': ['iron'],
+      'calcium': ['calcium'],
+      'magnesium': ['magnesium'],
+      'omega': ['omega-3'],
+      'omega-3': ['omega-3'],
+      'omega 3': ['omega-3'],
+      'probiotic': ['probiotics'],
+      'probiotics': ['probiotics'],
+      'collagen': ['collagen'],
+      'turmeric': ['turmeric'],
+      'melatonin': ['melatonin'],
+      'glucosamine': ['joint pain', 'arthritis']
+    };
+
+    for (const [key, values] of Object.entries(directMappings)) {
+      if (queryLower.includes(key)) {
+        return values;
+      }
+    }
+
+    return [];
   }
 
   async seedProducts() {

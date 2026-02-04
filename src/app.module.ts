@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from './auth/auth.module';
 import { ProductsModule } from './products/products.module';
 import { ChatModule } from './chat/chat.module';
+import { SymptomCheckerModule } from './symptom-checker/symptom-checker.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ChatModule } from './chat/chat.module';
     AuthModule,
     ProductsModule,
     ChatModule,
+    SymptomCheckerModule,
   ],
 })
 export class AppModule {}
